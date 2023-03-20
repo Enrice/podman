@@ -51,7 +51,7 @@ define podman::pod (
   Enum['present', 'absent'] $ensure = 'present',
   Hash $flags                       = {},
   Hash $service_flags               = {},
-  String $user                      = '',
+  Optional[String] $user            = undef,
   Boolean $enable                   = true,
   Hash $containers                  = {},
 ) {
@@ -87,7 +87,7 @@ define podman::pod (
     }
   }
 
-  if $user != '' {
+  if $user != undef and $user != '' {
     ensure_resource('podman::rootless', $user, {})
     $systemctl = 'systemctl --user '
     $service_unit_dir = "${User[$user]['home']}/.config/systemd/user"
@@ -96,14 +96,15 @@ define podman::pod (
     # Set execution environment for the rootless user
     $exec_defaults = {
       path        => '/sbin:/usr/sbin:/bin:/usr/bin',
+      cwd         => User[$user]['home'],
+      provider    => 'shell',
+      user        => $user,
+      require     => [Podman::Rootless[$user], Service['podman systemd-logind']],
       environment => [
         "HOME=${User[$user]['home']}",
         "XDG_RUNTIME_DIR=/run/user/${User[$user]['uid']}",
         "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${User[$user]['uid']}/bus",
       ],
-      cwd         => User[$user]['home'],
-      provider    => 'shell',
-      user        => $user,
     }
     $requires = [
       Podman::Rootless[$user],
@@ -147,159 +148,162 @@ define podman::pod (
     $podman_systemd_reload = 'podman_systemd_reload'
   }
 
-  if $ensure == 'present' {
-    # Detect changes to the defined podman sha256 and re-deploy if needed
-    exec { "verify_pod_sha256_${handle}":
-      command => 'true',
-      unless  => @("END"/$L),
-        if podman pod exists ${pod_name}; then
-          saved_sha256=\$(podman pod inspect ${pod_name} --format '{{.Labels.puppet_resource_sha256}}')
-          test "\${saved_sha256}" = "${pod_sha256}"
-        fi
-        |END
-      require => $requires,
-      notify  => [
-        Exec["service_disable_pod_${handle}"],
-        Exec["service_remove_pod_${handle}"],
-        Exec["podman_remove_pod_${handle}"],
-      ],
-      *       => $exec_defaults,
-    }
-
-    # Stop pod service unit if pod changed
-    exec { "service_disable_pod_${handle}":
-      command     => "${systemctl} disable --now ${service_unit}",
-      refreshonly => true,
-      *           => $exec_defaults,
-    }
-
-    # Remove pod service units if pod changed
-    exec { "service_remove_pod_${handle}":
-      command     => "rm -f ${service_unit} container-${pod_name}-*.service",
-      refreshonly => true,
-      require     => Exec["service_disable_pod_${handle}"],
-      before      => Exec["create_pod_${handle}"],
-      *           => $exec_defaults + {cwd => $service_unit_dir},
-    }
-
-    # Remove pod if pod changed
-    exec { "podman_remove_pod_${handle}":
-      command     => "podman pod rm --force ${pod_name}",
-      refreshonly => true,
-      require     => Exec["service_disable_pod_${handle}"],
-      before      => Exec["create_pod_${handle}"],
-      *           => $exec_defaults,
-    }
-
-    # Create pod
-    exec { "create_pod_${handle}":
-      command => "podman pod create ${_flags}",
-      unless  => "podman pod exists ${pod_name}",
-      *       => $exec_defaults,
-    }
-
-    # Set up systemd service units if pod has active containers
-    unless $containers.empty() {
-      # Declare the containers
-      $containers.each |$container, $params| {
-        podman::container { "${pod_name}-${container}":
-          user    => $user,
-          pod     => $pod_name,
-          require => Exec["create_pod_${handle}"],
-          notify  => Exec["podman_generate_service_${handle}"],
-          *       => $params
-        }
+  case $ensure {
+    'present': {
+      # Detect changes to the defined podman sha256 and re-deploy if needed
+      exec { "verify_pod_sha256_${handle}":
+        command => 'true',
+        unless  => @("END"/$L),
+          if podman pod exists ${pod_name}; then
+            saved_sha256=\$(podman pod inspect ${pod_name} --format '{{.Labels.puppet_resource_sha256}}')
+            test "\${saved_sha256}" = "${pod_sha256}"
+          fi
+          |END
+        require => $requires,
+        notify  => [
+          Exec["service_disable_pod_${handle}"],
+          Exec["service_remove_pod_${handle}"],
+          Exec["podman_remove_pod_${handle}"],
+        ],
+        *       => $exec_defaults,
       }
 
-      # Convert $service_flags hash to command arguments
-      $_default_service_flags = {
-        'stop-timeout' => '60',
-      }
-
-      $_service_flags = ($_default_service_flags + $service_flags).reduce('') |$mem, $flag| {
-        if $flag[1] =~ String {
-          if $flag[1] == '' {
-            "${mem} --${flag[0]}"
-          } else {
-            "${mem} --${flag[0]} '${flag[1]}'"
-          }
-        } elsif $flag[1] =~ Undef {
-          "${mem} --${flag[0]}"
-        } else {
-          $dup = $flag[1].reduce('') |$mem2, $value| {
-            "${mem2} --${flag[0]} '${value}'"
-          }
-          "${mem} ${dup}"
-        }
-      }
-
-      # Generate service units
-      exec { "podman_generate_service_${handle}":
-        command     => "podman generate systemd -f -n ${_service_flags} ${pod_name}",
+      # Stop pod service unit if pod changed
+      exec { "service_disable_pod_${handle}":
+        command     => "${systemctl} disable --now ${service_unit}",
         refreshonly => true,
-        notify      => Exec[$podman_systemd_reload],
+        *           => $exec_defaults,
+      }
+
+      # Remove pod service units if pod changed
+      exec { "service_remove_pod_${handle}":
+        command     => "rm -f ${service_unit} container-${pod_name}-*.service",
+        refreshonly => true,
+        require     => Exec["service_disable_pod_${handle}"],
+        before      => Exec["create_pod_${handle}"],
         *           => $exec_defaults + {cwd => $service_unit_dir},
       }
 
-      # Start/stop systemd service units.
-      if $enable {
-        exec { "service_stop_pod_${handle}":
-          command     => "${systemctl} stop ${service_unit}",
-          refreshonly => true,
-          subscribe   => Exec["podman_generate_service_${handle}"],
-          require     => Exec[$podman_systemd_reload],
-          *           => $exec_defaults,
+      # Remove pod if pod changed
+      exec { "podman_remove_pod_${handle}":
+        command     => "podman pod rm --force ${pod_name}",
+        refreshonly => true,
+        require     => Exec["service_disable_pod_${handle}"],
+        before      => Exec["create_pod_${handle}"],
+        *           => $exec_defaults,
+      }
+
+      # Create pod
+      exec { "create_pod_${handle}":
+        command => "podman pod create ${_flags}",
+        unless  => "podman pod exists ${pod_name}",
+        *       => $exec_defaults,
+      }
+
+      # Set up systemd service units if pod has active containers
+      unless $containers.empty() {
+        # Declare the containers
+        $containers.each |$container, $params| {
+          podman::container { "${pod_name}-${container}":
+            user    => $user,
+            pod     => $pod_name,
+            require => Exec["create_pod_${handle}"],
+            notify  => Exec["podman_generate_service_${handle}"],
+            *       => $params
+          }
         }
 
-        exec { "service_start_pod_${handle}":
-          command => "${systemctl} enable --now ${service_unit}",
-          unless  => @("END"/L),
-            ${systemctl} is-active ${service_unit} && \
-            ${systemctl} is-enabled ${service_unit}
-            |END
-          require => Exec["service_stop_pod_${handle}"],
-          *       => $exec_defaults,
+        # Convert $service_flags hash to command arguments
+        $_default_service_flags = {
+          'stop-timeout' => '60',
         }
-      } else {
-        exec { "service_pod_${handle}":
+
+        $_service_flags = ($_default_service_flags + $service_flags).reduce('') |$mem, $flag| {
+          if $flag[1] =~ String {
+            if $flag[1] == '' {
+              "${mem} --${flag[0]}"
+            } else {
+              "${mem} --${flag[0]} '${flag[1]}'"
+            }
+          } elsif $flag[1] =~ Undef {
+            "${mem} --${flag[0]}"
+          } else {
+            $dup = $flag[1].reduce('') |$mem2, $value| {
+              "${mem2} --${flag[0]} '${value}'"
+            }
+            "${mem} ${dup}"
+          }
+        }
+
+        # Generate service units
+        exec { "podman_generate_service_${handle}":
+          command     => "podman generate systemd -f -n ${_service_flags} ${pod_name}",
+          refreshonly => true,
+          notify      => Exec[$podman_systemd_reload],
+          *           => $exec_defaults + {cwd => $service_unit_dir},
+        }
+
+        # Start/stop systemd service units.
+        if $enable {
+          exec { "service_stop_pod_${handle}":
+            command     => "${systemctl} stop ${service_unit}",
+            refreshonly => true,
+            subscribe   => Exec["podman_generate_service_${handle}"],
+            require     => Exec[$podman_systemd_reload],
+            *           => $exec_defaults,
+          }
+
+          exec { "service_start_pod_${handle}":
+            command => "${systemctl} enable --now ${service_unit}",
+            unless  => @("END"/L),
+              ${systemctl} is-active ${service_unit} && \
+              ${systemctl} is-enabled ${service_unit}
+              |END
+            require => Exec["service_stop_pod_${handle}"],
+            *       => $exec_defaults,
+          }
+        } else {
+          exec { "service_pod_${handle}":
+            command => "${systemctl} disable --now ${service_unit}",
+            onlyif  => @("END"/L),
+              ${systemctl} is-active ${service_unit} || \
+              ${systemctl} is-enabled ${service_unit}
+              |END
+            require => Exec[$podman_systemd_reload],
+            *       => $exec_defaults,
+          }
+        }
+      }
+    }
+    default: {
+      # Ensure pod is absent
+
+      # Stop pod service unit
+      exec { "service_stop_pod_${handle}":
           command => "${systemctl} disable --now ${service_unit}",
           onlyif  => @("END"/L),
             ${systemctl} is-active ${service_unit} || \
             ${systemctl} is-enabled ${service_unit}
             |END
-          require => Exec[$podman_systemd_reload],
+          notify  => Exec["service_remove_pod_${handle}"],
           *       => $exec_defaults,
         }
-      }
-    }
-  } else {
-    # Ensure pod is absent
 
-    # Stop pod service unit
-    exec { "service_stop_pod_${handle}":
-        command => "${systemctl} disable --now ${service_unit}",
-        onlyif  => @("END"/L),
-          ${systemctl} is-active ${service_unit} || \
-          ${systemctl} is-enabled ${service_unit}
-          |END
-        notify  => Exec["service_remove_pod_${handle}"],
+      # Remove pod service units
+      exec { "service_remove_pod_${handle}":
+        command     => "rm -f ${service_unit} container-${pod_name}-*.service",
+        refreshonly => true,
+        notify      => Exec[$podman_systemd_reload],
+        *           => $exec_defaults + {cwd => $service_unit_dir},
+      }
+
+      # Remove pod
+      exec { "podman_remove_pod_${handle}":
+        command => "podman pod rm --force ${pod_name}",
+        onlyif  => "podman pod exists ${pod_name}",
+        require => Exec["service_stop_pod_${handle}"],
         *       => $exec_defaults,
       }
-
-    # Remove pod service units
-    exec { "service_remove_pod_${handle}":
-      command     => "rm -f ${service_unit} container-${pod_name}-*.service",
-      refreshonly => true,
-      notify      => Exec[$podman_systemd_reload],
-      *           => $exec_defaults + {cwd => $service_unit_dir},
-    }
-
-    # Remove pod
-    exec { "podman_remove_pod_${handle}":
-      command => "podman pod rm --force ${pod_name}",
-      onlyif  => "podman pod exists ${pod_name}",
-      require => Exec["service_stop_pod_${handle}"],
-      *       => $exec_defaults,
     }
   }
 }
