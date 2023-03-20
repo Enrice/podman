@@ -133,16 +133,16 @@ define podman::network (
                   podman network create ${title} --driver ${driver} ${_opts} \
                     ${_gateway} ${_internal} ${_ip_range} ${_labels} ${_subnet} ${_ipv6}
                   |END
-        unless  => "podman network exists ${title}",
+        unless  => "[[ \"$(podman network ls -f name=${title} -q | wc -l)\" -eq 1 ]] || { exit 1; }",
         path    => ['/usr/bin', '/bin', '/usr/sbin', '/sbin'],
         require => $requires,
         *       => $exec_defaults,
       }
     }
     'absent': {
-      exec { "podman_remove_volume_${title}":
+      exec { "podman_remove_network_${title}":
         command => "podman network rm ${title}",
-        onlyif  => "podman network exists ${title}",
+        onlyif  => "[[ \"$(podman network ls -f name=${title} -q | wc -l)\" -eq 1 ]] || { exit 1; }",
         path    => ['/usr/bin', '/bin', '/usr/sbin', '/sbin'],
         require => $requires,
         *       => $exec_defaults,
