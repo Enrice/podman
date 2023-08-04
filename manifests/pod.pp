@@ -150,7 +150,7 @@ define podman::pod (
         |END
       require => $requires,
       notify  => [
-        Exec["service_stop_pod_${handle}"],
+        Exec["service_disable_pod_${handle}"],
         Exec["service_remove_pod_${handle}"],
         Exec["podman_remove_pod_${handle}"],
       ],
@@ -158,12 +158,8 @@ define podman::pod (
     }
 
     # Stop pod service unit if pod changed
-    exec { "service_stop_pod_${handle}":
+    exec { "service_disable_pod_${handle}":
       command     => "${systemctl} disable --now ${service_unit}",
-      onlyif      => @("END"/L),
-        ${systemctl} is-active ${service_unit} || \
-        ${systemctl} is-enabled ${service_unit}
-        |END
       refreshonly => true,
       *           => $exec_defaults,
     }
@@ -172,7 +168,7 @@ define podman::pod (
     exec { "service_remove_pod_${handle}":
       command     => "rm -f ${service_unit} container-${pod_name}-*.service",
       refreshonly => true,
-      require     => Exec["service_stop_pod_${handle}"],
+      require     => Exec["service_disable_pod_${handle}"],
       before      => Exec["create_pod_${handle}"],
       *           => $exec_defaults + {cwd => $service_unit_dir},
     }
@@ -181,7 +177,7 @@ define podman::pod (
     exec { "podman_remove_pod_${handle}":
       command     => "podman pod rm --force ${pod_name}",
       refreshonly => true,
-      require     => Exec["service_stop_pod_${handle}"],
+      require     => Exec["service_disable_pod_${handle}"],
       before      => Exec["create_pod_${handle}"],
       *           => $exec_defaults,
     }
@@ -216,13 +212,21 @@ define podman::pod (
 
       # Start/stop systemd service units.
       if $enable {
-        exec { "service_pod_${handle}":
+        exec { "service_stop_pod_${handle}":
+          command     => "${systemctl} stop ${service_unit}",
+          refreshonly => true,
+          subscribe   => Exec["podman_generate_service_${handle}"],
+          require     => Exec[$podman_systemd_reload],
+          *           => $exec_defaults,
+        }
+
+        exec { "service_start_pod_${handle}":
           command => "${systemctl} enable --now ${service_unit}",
           unless  => @("END"/L),
             ${systemctl} is-active ${service_unit} && \
             ${systemctl} is-enabled ${service_unit}
             |END
-          require => Exec[$podman_systemd_reload],
+          require => Exec["service_stop_pod_${handle}"],
           *       => $exec_defaults,
         }
       } else {
