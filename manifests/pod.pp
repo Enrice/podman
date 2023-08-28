@@ -8,6 +8,14 @@
 #   long form of the flag name.  The resource name (namevar) will be used as the
 #   pod name unless the 'name' flag is included in the hash of flags.
 #
+# @param service_flags
+#   When a pod is created, a systemd unit file for the pod and container services
+#   is generated using the 'podman generate systemd' command.  All flags for the
+#   command are supported using the 'service_flags" hash parameter, again using
+#   only the long form of the flag names.
+#
+# @note Service flags on individual containers within a pod are not honored.
+#
 # @param user
 #   Optional user for running rootless containers.  When using this parameter,
 #   the user must also be defined as a Puppet resource and must include the
@@ -42,6 +50,7 @@
 define podman::pod (
   Enum['present', 'absent'] $ensure = 'present',
   Hash $flags                       = {},
+  Hash $service_flags               = {},
   String $user                      = '',
   Boolean $enable                   = true,
   Hash $containers                  = {},
@@ -202,9 +211,31 @@ define podman::pod (
         }
       }
 
+      # Convert $service_flags hash to command arguments
+      $_default_service_flags = {
+        'stop-timeout' => '60',
+      }
+
+      $_service_flags = ($_default_service_flags + $service_flags).reduce('') |$mem, $flag| {
+        if $flag[1] =~ String {
+          if $flag[1] == '' {
+            "${mem} --${flag[0]}"
+          } else {
+            "${mem} --${flag[0]} '${flag[1]}'"
+          }
+        } elsif $flag[1] =~ Undef {
+          "${mem} --${flag[0]}"
+        } else {
+          $dup = $flag[1].reduce('') |$mem2, $value| {
+            "${mem2} --${flag[0]} '${value}'"
+          }
+          "${mem} ${dup}"
+        }
+      }
+
       # Generate service units
       exec { "podman_generate_service_${handle}":
-        command     => "podman generate systemd -f -n ${pod_name}",
+        command     => "podman generate systemd -f -n ${_service_flags} ${pod_name}",
         refreshonly => true,
         notify      => Exec[$podman_systemd_reload],
         *           => $exec_defaults + {cwd => $service_unit_dir},
