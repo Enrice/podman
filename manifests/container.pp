@@ -328,21 +328,25 @@ define podman::container (
           }
 
           # Work-around for managing user systemd services
-          if $enable { $action = 'start'; $startup = 'enable'
-          } else { $action = 'stop'; $startup = 'disable'
+          if $enable {
+            $action = 'start'; $startup = 'enable'
+          } else {
+            $action = 'stop'; $startup = 'disable'
           }
 
           $command_sp = @("END"/L)
-                      ${systemctl} ${startup} ${service_unit}
-                      ${systemctl} ${action} ${service_unit}
-                      |END
+            ${systemctl} ${startup} ${service_unit}
+            ${systemctl} ${action} ${service_unit}
+            |END
           $unless_sp = @("END"/L)
-                      ${systemctl} is-active ${service_unit} && \
-                        ${systemctl} is-enabled ${service_unit}
-                      |END
+            ${systemctl} is-active ${service_unit} && \
+              ${systemctl} is-enabled ${service_unit}
+            |END
+
           exec { "service_podman_${handle}":
             command => $command_sp,
-            unless  => $unless_sp,          require => $requires,
+            unless  => $unless_sp,
+            require => $requires,
             path    => '/sbin:/usr/sbin:/bin:/usr/bin',
             *       => $exec_defaults,
           }
@@ -355,8 +359,10 @@ define podman::container (
           }
 
           # Configure the container service per parameters
-          if $enable { $state = 'running'; $startup = 'true'
-          } else { $state = 'stopped'; $startup = 'false'
+          if $enable {
+            $state = 'running'; $startup = 'true'
+          } else {
+            $state = 'stopped'; $startup = 'false'
           }
           service { "podman-${handle}":
             ensure => $state,
