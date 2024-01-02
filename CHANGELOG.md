@@ -1,5 +1,19 @@
 # Changelog
 
+## Release 0.6.7
+  - Bugfix. Avoid deprecated has_key function #64. Contributed by traylenator
+  - Support for Puppet 8.x & puppetlabs/stdlib 9.x #66
+
+## Release 0.6.6
+ - Bugfix. Update install.pp due to false positive on selinux check #60. Contributed by magarvo
+ - Support ArchLinux #61. Contributed by traylenator
+ - Update supported OS list to drop specific versioned releases.
+ 
+## Release 0.6.5
+
+ - Bugfix for issue #55, Typo in network manifest. Identified by CyberLine
+ - Bugfix for issue #56, creates invalid systemd service file. Identified by tuxmaster5000
+
 ## Release 0.6.4
 
  - Bugfix. Fixed spelling typo "machienectl", which changed module parameters:
