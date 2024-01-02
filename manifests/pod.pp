@@ -126,7 +126,6 @@ define podman::pod (
       }
     )
     $podman_systemd_reload = "podman_systemd_${user}_reload"
-
   } else {
     $systemctl = 'systemctl '
     $service_unit_dir = '/etc/systemd/system/'
@@ -181,7 +180,7 @@ define podman::pod (
         refreshonly => true,
         require     => Exec["service_disable_pod_${handle}"],
         before      => Exec["create_pod_${handle}"],
-        *           => $exec_defaults + {cwd => $service_unit_dir},
+        *           => $exec_defaults + { cwd => $service_unit_dir },
       }
 
       # Remove pod if pod changed
@@ -209,7 +208,7 @@ define podman::pod (
             pod     => $pod_name,
             require => Exec["create_pod_${handle}"],
             notify  => Exec["podman_generate_service_${handle}"],
-            *       => $params
+            *       => $params,
           }
         }
 
@@ -240,7 +239,7 @@ define podman::pod (
           command     => "podman generate systemd -f -n ${_service_flags} ${pod_name}",
           refreshonly => true,
           notify      => Exec[$podman_systemd_reload],
-          *           => $exec_defaults + {cwd => $service_unit_dir},
+          *           => $exec_defaults + { cwd => $service_unit_dir },
         }
 
         # Start/stop systemd service units.
@@ -294,7 +293,7 @@ define podman::pod (
         command     => "rm -f ${service_unit} container-${pod_name}-*.service",
         refreshonly => true,
         notify      => Exec[$podman_systemd_reload],
-        *           => $exec_defaults + {cwd => $service_unit_dir},
+        *           => $exec_defaults + { cwd => $service_unit_dir },
       }
 
       # Remove pod

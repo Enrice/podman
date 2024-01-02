@@ -20,12 +20,11 @@
 #   mutually exclusive.
 #
 class podman::play (
-  Enum['present', 'absent'] $ensure = 'present',
-  Optional[String] $user = undef,
-  Optional[String] $source = undef,
+  Enum['present', 'absent'] $ensure        = 'present',
+  Optional[String] $user                   = undef,
+  Optional[String] $source                 = undef,
   Optional[Variant[String, Hash]] $content = undef,
 ) {
-
   unless $source or $content {
     fail('either source or content parameters are required')
   }
@@ -73,7 +72,6 @@ class podman::play (
       }
     )
     $podman_systemd_reload = "podman_systemd_${user}_reload"
-
   } else {
     $systemctl = 'systemctl '
     $service_unit_dir = '/etc/systemd/system/'
@@ -160,7 +158,7 @@ class podman::play (
       command     => "podman generate systemd -f -n ${pod_name}",
       refreshonly => true,
       notify      => Exec[$podman_systemd_reload],
-      *           => $exec_defaults + {cwd => $service_unit_dir},
+      *           => $exec_defaults + { cwd => $service_unit_dir },
     }
 
     exec { "start_pod_${title}":
@@ -168,7 +166,6 @@ class podman::play (
       unless  => "${systemctl} -q is-active pod-${pod_name}",
       *       => $exec_defaults,
     }
-
   } else {
     # Ensure the pod is absent.
 
