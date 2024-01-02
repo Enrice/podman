@@ -23,6 +23,7 @@
 * [`podman::network`](#podmannetwork): Create a podman network with defined flags
 * [`podman::pod`](#podmanpod): Create a podman pod with defined flags
 * [`podman::rootless`](#podmanrootless): Enable a given user to run rootless podman containers as a systemd user service.
+* [`podman::secret`](#podmansecret): Manage a podman secret. Create and remove secrets, it cannot replace.
 * [`podman::subgid`](#podmansubgid): Define an entry in the `/etc/subgid` file.
 * [`podman::subuid`](#podmansubuid): Manage entries in `/etc/subuid`
 * [`podman::volume`](#podmanvolume): Create a podman volume with defined flags
@@ -77,11 +78,11 @@ The following parameters are available in the `podman` class:
 * [`buildah_pkg`](#buildah_pkg)
 * [`podman_docker_pkg`](#podman_docker_pkg)
 * [`compose_pkg`](#compose_pkg)
-* [`machienectl_pkg`](#machienectl_pkg)
+* [`machinectl_pkg`](#machinectl_pkg)
 * [`buildah_pkg_ensure`](#buildah_pkg_ensure)
 * [`podman_docker_pkg_ensure`](#podman_docker_pkg_ensure)
 * [`compose_pkg_ensure`](#compose_pkg_ensure)
-* [`machienectl_pkg_ensure`](#machienectl_pkg_ensure)
+* [`machinectl_pkg_ensure`](#machinectl_pkg_ensure)
 * [`nodocker`](#nodocker)
 * [`storage_options`](#storage_options)
 * [`rootless_users`](#rootless_users)
@@ -136,11 +137,11 @@ The name of the podman-compose package (default 'podman-compose').
 
 Default value: `'podman-compose'`
 
-##### <a name="machienectl_pkg"></a>`machienectl_pkg`
+##### <a name="machinectl_pkg"></a>`machinectl_pkg`
 
 Data type: `String`
 
-The name of the machienectl package (default 'systemd-container').
+The name of the machinectl package (default 'systemd-container').
 
 Default value: `'systemd-container'`
 
@@ -168,11 +169,11 @@ The ensure value for the podman-compose package (default 'absent')
 
 Default value: `'absent'`
 
-##### <a name="machienectl_pkg_ensure"></a>`machienectl_pkg_ensure`
+##### <a name="machinectl_pkg_ensure"></a>`machinectl_pkg_ensure`
 
 Data type: `Enum['absent', 'installed']`
 
-The ensure value for the machienectl package (default 'installed')
+The ensure value for the machinectl package (default 'installed')
 
 Default value: `'installed'`
 
@@ -672,6 +673,104 @@ Default value: `''`
 ### <a name="podmanrootless"></a>`podman::rootless`
 
 Enable a given user to run rootless podman containers as a systemd user service.
+
+### <a name="podmansecret"></a>`podman::secret`
+
+Manage a podman secret. Create and remove secrets, it cannot replace.
+
+#### Examples
+
+##### Set a secret with a version from puppet directly
+
+```puppet
+podman::secret{'db_password':
+  secret => Sensitive('NeverGuess'),
+  flags  => {
+    label => [
+      'version=20230615',
+    ]
+  }
+}
+```
+
+##### Set a secret from a file
+
+```puppet
+podman::secret{'db_password':
+  path => '/etc/passwd',
+}
+```
+
+##### Set a secret from a deferred function call.
+
+```puppet
+podman::secret{'ora_password':
+  secret => Sensitive(Deferred('secret_lookup',['ora_password'])),
+  flags => {
+    labels => ['version=20230615'],
+  }
+  user => 'rootless user',
+}
+```
+
+#### Parameters
+
+The following parameters are available in the `podman::secret` defined type:
+
+* [`ensure`](#ensure)
+* [`path`](#path)
+* [`secret`](#secret)
+* [`flags`](#flags)
+* [`user`](#user)
+
+##### <a name="ensure"></a>`ensure`
+
+Data type: `Enum['present','absent']`
+
+State of the resource must be either 'present' or 'absent'.
+
+Default value: `'present'`
+
+##### <a name="path"></a>`path`
+
+Data type: `Optional[Stdlib::Unixpath]`
+
+Load secret from an existing file path
+The secret and path parameters are mutually exclusive.
+
+Default value: ``undef``
+
+##### <a name="secret"></a>`secret`
+
+Data type: `Optional[Sensitive[String]]`
+
+A secret to be stored - can be set as a Deferred function. If the secret is
+changed the secret will **NOT** be modified. Best to set a secret version
+as a label.
+The secret and path parameters are mutually exclusive.
+
+Default value: ``undef``
+
+##### <a name="flags"></a>`flags`
+
+Data type: `Hash`
+
+All flags for the 'podman secret create' command are supported as part of the
+'flags' hash, using only the long form of the flag name.  The value for any
+defined flag in the 'flags' hash must be entered as a string.
+If the flags for a secret are modified the secret will be recreated.
+
+Default value: `{}`
+
+##### <a name="user"></a>`user`
+
+Data type: `Optional[String[1]]`
+
+Optional user for running rootless containers.  When using this parameter,
+the user must also be defined as a Puppet resource and must include the
+'uid', 'gid', and 'home'
+
+Default value: ``undef``
 
 ### <a name="podmansubgid"></a>`podman::subgid`
 
