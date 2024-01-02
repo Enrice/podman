@@ -69,7 +69,7 @@ define podman::pod (
   }
 
   # The resource name will be the pod name by default
-  $merged_flags = { name => $title, label => $label} + $no_label
+  $merged_flags = { name => $title, label => $label } + $no_label
   $pod_name = $merged_flags['name']
   $service_unit = "pod-${pod_name}.service"
 
@@ -133,8 +133,8 @@ define podman::pod (
     $handle = $pod_name
 
     $exec_defaults = {
-      path        => '/sbin:/usr/sbin:/bin:/usr/bin',
-      provider    => 'shell',
+      path     => '/sbin:/usr/sbin:/bin:/usr/bin',
+      provider => 'shell',
     }
 
     # Reload systemd when service files are updated

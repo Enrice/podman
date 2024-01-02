@@ -104,9 +104,9 @@ define podman::container (
 
   # If a container name is not set, use the Puppet resource name
   if $pod == '' {
-    $merged_flags = {name => $title, label => $label} + $no_label
+    $merged_flags = { name => $title, label => $label } + $no_label
   } else {
-    $merged_flags = {name => $title, label => $label } + $no_label + {pod => $pod}
+    $merged_flags = { name => $title, label => $label } + $no_label + { pod => $pod }
   }
   $container_name = $merged_flags['name']
   $service_unit = "container-${container_name}.service"
@@ -115,7 +115,7 @@ define podman::container (
   if $user != undef and $user != '' {
     $systemctl = 'systemctl --user '
     $requires = [Podman::Rootless[$user], Service['podman systemd-logind']]
-    $service_unit_file ="${User[$user]['home']}/.config/systemd/user/${service_unit}"
+    $service_unit_file = "${User[$user]['home']}/.config/systemd/user/${service_unit}"
     $_podman_systemd_reload = Exec["podman_systemd_${user}_reload"]
 
     # The handle is used to ensure resources have unique names
