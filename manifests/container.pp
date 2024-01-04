@@ -355,7 +355,7 @@ define podman::container (
             path        => '/sbin:/usr/sbin:/bin:/usr/bin',
             command     => "podman generate systemd ${_service_flags} ${container_name} > ${service_unit_file}",
             refreshonly => true,
-            notify      => Service["podman-${handle}"],
+            notify      => Service["container-${handle}"],
           }
 
           # Configure the container service per parameters
@@ -364,7 +364,7 @@ define podman::container (
           } else {
             $state = 'stopped'; $startup = 'false'
           }
-          service { "podman-${handle}":
+          service { "container-${handle}":
             ensure => $state,
             enable => $startup,
           }
