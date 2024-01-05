@@ -353,6 +353,7 @@ define podman::container (
         } else {
           exec { "podman_generate_service_${handle}":
             path        => '/sbin:/usr/sbin:/bin:/usr/bin',
+            subscribe   => Exec["podman_create_${handle}"],
             command     => "podman generate systemd ${_service_flags} ${container_name} > ${service_unit_file}",
             refreshonly => true,
             notify      => Service["container-${handle}"],
